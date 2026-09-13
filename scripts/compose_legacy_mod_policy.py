@@ -168,13 +168,32 @@ def compose(policy: dict, fragment: dict, sections: list) -> dict:
         expected = [int(word, 0) for word in site["expected"]]
         if len(expected) != 3 or [words.get(address + i * 4) for i in range(3)] != expected:
             raise ValueError(f"Asset API entry signature changed: {name}")
-        if any(int(entry["beforeVram"], 0) == address for entry in hooks) or any(
-                int(entry["vram"], 0) == address for entry in patches):
-            raise ValueError(f"Asset API entry conflicts with an existing policy: {name}")
+        if any(int(entry["vram"], 0) == address for entry in patches):
+            raise ValueError(f"Asset API entry conflicts with an existing instruction patch: {name}")
+        legacy_text = ("extern int dkr_legacy_asset_api(uint8_t*, recomp_context*, unsigned); "
+                       f"if (dkr_legacy_asset_api(rdram, ctx, {operation}U)) return;")
+        legacy_reason = "Resolve a mounted immutable bank at the original function entry; leave the complete retail path intact without a mount."
+        owners = [entry for entry in hooks if int(entry["beforeVram"], 0) == address]
+        if owners:
+            # v1.0.5 base policies already own the two most common asset
+            # entries with custom-tracks argument capture. The legacy bus
+            # must run first: without a mount it returns 0 and falls through
+            # to the unchanged custom-tracks/retail path; with a mount it
+            # returns early so custom-tracks begin/end never observe
+            # bank-served data (their globals would otherwise leak into the
+            # next call's end hook).
+            expected_owners = {
+                "asset_table_load": "extern void dkr_custom_tracks_table_load_begin(uint8_t*, recomp_context*); dkr_custom_tracks_table_load_begin(rdram, ctx);",
+                "asset_load": "extern void dkr_custom_tracks_asset_load_begin(uint8_t*, recomp_context*); dkr_custom_tracks_asset_load_begin(rdram, ctx);",
+            }
+            if len(owners) != 1 or owners[0]["function"] != name or owners[0]["text"] != expected_owners.get(name):
+                raise ValueError(f"Unreviewed existing owner at asset API entry: {name}")
+            owners[0]["text"] = legacy_text + " " + owners[0]["text"]
+            owners[0]["reason"] += " Then capture entry arguments for the unchanged custom-tracks path."
+            continue
         hooks.append({"function": name, "beforeVram": f"0x{address:08X}",
-                      "text": "extern int dkr_legacy_asset_api(uint8_t*, recomp_context*, unsigned); "
-                              f"if (dkr_legacy_asset_api(rdram, ctx, {operation}U)) return;",
-                      "reason": "Resolve a mounted immutable bank at the original function entry; leave the complete retail path intact without a mount."})
+                      "text": legacy_text,
+                      "reason": legacy_reason})
     return result
 
 

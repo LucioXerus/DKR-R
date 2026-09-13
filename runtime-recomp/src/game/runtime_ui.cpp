@@ -9352,10 +9352,15 @@ void DrawTrackLabControls(float width) {
     }
 }
 
-void DrawModsHacks(float width) {
 #include "runtime_mod_library_ui.inl"
 
-void DrawModsHacks(float width, bool game_running = false) {
+void DrawModsHacks(float width, bool game_running);
+
+void DrawModsHacks(float width) {
+    DrawModsHacks(width, false);
+}
+
+void DrawModsHacks(float width, bool game_running) {
     DrawPageHeading("MODS / HACKS");
     ImGui::TextDisabled("Choose the island rules that DKR-R applies on the next launch.");
     ImGui::Dummy({0.0F, 16.0F});

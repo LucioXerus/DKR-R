@@ -965,16 +965,24 @@ void scan_one(const std::filesystem::path& directory, const char* label) {
         !std::filesystem::is_directory(directory, code)) {
         return;
     }
+    // Sort by filename so load order (and therefore published level ids)
+    // is deterministic across filesystems. directory_iterator order is
+    // unspecified and varies between machines.
+    std::vector<std::filesystem::path> tracks;
     for (const auto& item :
          std::filesystem::directory_iterator(directory, code)) {
         if (!item.is_directory() || item.path().extension() != ".dkrmap") {
             continue;
         }
+        tracks.push_back(item.path());
+    }
+    std::sort(tracks.begin(), tracks.end());
+    for (const auto& path : tracks) {
         Track track;
         std::string error;
-        if (!parse_track(item.path(), track, error)) {
+        if (!parse_track(path, track, error)) {
             std::fprintf(stderr, "[custom-tracks] skipped %s: %s\n",
-                         item.path().filename().string().c_str(),
+                         path.filename().string().c_str(),
                          error.c_str());
             continue;
         }
@@ -985,7 +993,7 @@ void scan_one(const std::filesystem::path& directory, const char* label) {
         // for a working folder the sibling the exporter just wrote is present.
         if (!track.hd_pack_file.empty()) {
             const std::filesystem::path sibling =
-                item.path().parent_path() / track.hd_pack_file;
+                path.parent_path() / track.hd_pack_file;
             std::error_code sib;
             if (std::filesystem::is_regular_file(sibling, sib)) {
                 std::string digest;
@@ -1014,7 +1022,7 @@ void scan_one(const std::filesystem::path& directory, const char* label) {
             std::fprintf(stderr,
                          "[custom-tracks] skipped %s: id \"%s\" is already "
                          "loaded from %s\n",
-                         item.path().filename().string().c_str(),
+                          path.filename().string().c_str(),
                          track.id.c_str(),
                          clash->source.string().c_str());
             continue;
